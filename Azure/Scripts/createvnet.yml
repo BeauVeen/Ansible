@@ -1,0 +1,11 @@
+---
+- name: Create a Azure Virtual Network
+  hosts: localhost
+  tasks:
+   - name: Create virtual network
+     azure_rm_virtualnetwork:
+      resource_group: KE02_groep02_RG
+      name: VnetTestBeau
+      location: West Europe
+      address_prefixes: "10.30.0.0/16"
+      state: present
