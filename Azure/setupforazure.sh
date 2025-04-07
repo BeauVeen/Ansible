@@ -25,7 +25,5 @@ curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 pip install azure-cli-core --break-system-packages
 pip install msrest azure-mgmt-compute azure-mgmt-network azure-mgmt-resource --break-system-packages
 
-echo "test"
-
 echo "Run 'az login --use-device-code' to verify your account and complete setup"
 echo "Run 'ansible-playbook playbook.yml' to run your Ansible playbook"
