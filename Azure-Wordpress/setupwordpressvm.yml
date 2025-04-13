@@ -1,0 +1,117 @@
+---
+- name: Set up and install a virtual machine with Wordpress
+  hosts: localhost
+  connection: local
+  vars:
+    resource_group: KE02_groep02_RG
+    location: westeurope
+    admin_user: wpadmin
+    admin_pass: P@ssword1
+    virtual_network: Beau-Vnet-Opdrachten
+    subnet: Beau-subnet
+
+    image_offer: ubuntu-24_04-lts
+    image_sku: server
+    image_publisher: Canonical
+    size: Standard_B1s
+    managed_disk_type: Standard_LRS
+
+    vm_name: Beau-VM
+    nsg_name: Beau-NSG-subnet
+    address_space: "10.15.0.0/16"
+    subnet_prefix: "10.15.1.0/24"
+
+  tasks:
+    - name: Create virtual network
+      azure.azcollection.azure_rm_virtualnetwork:
+        resource_group: "{{ resource_group }}"
+        name: "{{ virtual_network }}"
+        location: "{{ location }}"
+        address_prefixes: "{{ address_space }}"
+
+    - name: Create subnet
+      azure.azcollection.azure_rm_subnet:
+        resource_group: "{{ resource_group }}"
+        virtual_network_name: "{{ virtual_network }}"
+        name: "{{ subnet }}"
+        address_prefix: "{{ subnet_prefix }}"
+
+    - name: Create network security group
+      azure.azcollection.azure_rm_securitygroup:
+        resource_group: "{{ resource_group }}"
+        name: "{{ nsg_name }}"
+        location: "{{ location }}"
+        rules:
+          - name: allow_ssh
+            protocol: Tcp
+            destination_port_range: "22"
+            access: Allow
+            priority: 1000
+            direction: Inbound
+
+          - name: allow_http
+            protocol: Tcp
+            destination_port_range: "80"
+            access: Allow
+            priority: 1010
+            direction: Inbound
+    
+    - name: Add NSG to subnet
+      azure.azcollection.azure_rm_subnet:
+        name: "{{ subnet }}"
+        resource_group: "{{ resource_group }}"
+        virtual_network_name: "{{ virtual_network }}"
+        address_prefix: "{{ subnet_prefix }}"
+        security_group: "{{ nsg_name }}"
+
+    - name: Create public IP
+      azure.azcollection.azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        allocation_method: Static
+        name: "{{ vm_name }}-public-ip"
+        location: "{{ location }}"
+        state: present
+
+    - name: Create network interface
+      azure.azcollection.azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: "{{ vm_name }}-nic"
+        location: "{{ location }}"
+        virtual_network: "{{ virtual_network }}"
+        subnet_name: "{{ subnet }}"
+        security_group: "{{ nsg_name }}"
+        ip_configurations:
+          - name: ipconfig1
+            public_ip_address_name: "{{ vm_name }}-public-ip"
+
+    - name: Create virtual machine
+      azure.azcollection.azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: "{{ vm_name }}"
+        location: "{{ location }}"
+        vm_size: "{{ size }}"
+        admin_username: "{{ admin_user }}"
+        admin_password: "{{ admin_pass }}"
+        image:
+          offer: "{{ image_offer }}"
+          publisher: "{{ image_publisher }}"
+          sku: "{{ image_sku }}"
+          version: latest
+        os_disk_name: "{{ vm_name }}-osdisk"
+        managed_disk_type: "{{ managed_disk_type }}"
+        network_interface_names:
+          - "{{ vm_name }}-nic"
+
+    - name: Stop virtual machine
+      azure.azcollection.azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: "{{ vm_name }}"
+        started: false
+        state: present
+
+    - name: Start virtual machine
+      azure.azcollection.azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: "{{ vm_name }}"
+        started: true
+        state: present
