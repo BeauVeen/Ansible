@@ -1,0 +1,97 @@
+---
+- name: Azure Infrastructure Deployment
+  hosts: localhost
+
+  vars_files:
+    - ../group_vars/all.yml
+
+  tasks:
+    - name: Create Virtual Network
+      azure_rm_virtualnetwork:
+        resource_group: "{{ resource_group }}"
+        name: "{{ virtual_network }}"
+        location: "{{ location }}"
+        address_prefixes: "{{ address_prefixes }}"
+
+    - name: Create subnets
+      azure_rm_subnet:
+        resource_group: "{{ resource_group }}"
+        virtual_network_name: "{{ virtual_network }}"  
+        name: "{{ item.name }}"
+        address_prefix: "{{ item.prefix }}"
+      loop: "{{ subnets }}"
+
+    - name: Create NSGs
+      azure_rm_securitygroup:
+        resource_group: "{{ resource_group }}"
+        name: "nsg-{{ item.name }}"  
+        location: "{{ location }}"
+        rules: "{{ item.rules }}"
+      loop: "{{ subnets }}"
+      when: item.rules is defined
+      
+    - name: Add NSG to subnets
+      azure_rm_subnet:
+        name: "{{ item.name }}"
+        resource_group: "{{ resource_group }}"
+        virtual_network_name:  "{{ virtual_network }}"
+        address_prefix: "{{ item.prefix }}"
+        security_group: "nsg-{{ item.name }}"
+      loop: "{{ subnets }}"
+
+    - name: Create public IPs for VMs
+      azure_rm_publicipaddress:
+        name: "pip-{{ item.name }}"
+        resource_group: "{{ resource_group }}"
+        location: "{{ location }}"
+        allocation_method: Dynamic
+      loop: "{{ vm_configs }}"
+      when: item.public_ip
+
+    - name: Create Network Interface Cards
+      azure_rm_networkinterface:
+        name: "nic-{{ item.name }}"
+        resource_group: "{{ resource_group }}"
+        location: "{{ location }}"
+        virtual_network: "{{ virtual_network }}"
+        subnet_name: "{{ item.subnet }}"
+        create_with_security_group: false
+        ip_configurations:
+          - name: ipconfig1
+            private_ip_address: "{{ item.private_ip }}"
+            private_ip_allocation_method: Static
+            public_ip_address_name: "{{ 'pip-' + item.name if item.public_ip else omit }}"
+      loop: "{{ vm_configs }}"
+
+    - name: Create Virtual Machines
+      azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: "{{ item.name }}"
+        location: "{{ location }}"
+        vm_size: "{{ vm_size }}"
+        admin_username: "{{ admin_username }}"
+        admin_password: "{{ admin_password }}"
+        image: "{{ vm_image }}"
+        network_interfaces:
+          - "nic-{{ item.name }}"
+
+        os_disk_name: "{{ item.name }}-osdisk"
+        os_disk_caching: "{{ os_disk_caching }}"
+        managed_disk_type: "{{ managed_disk_type }}"
+      loop: "{{ vm_configs }}"
+    
+    - name: Stop Virtual Machines
+      azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: "{{ item.name }}"
+        started: false
+        state: present
+      loop: "{{ vm_configs }}"
+
+    - name: Start Virtual Machines
+      azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: "{{ item.name }}"
+        started: true
+        state: present
+      loop: "{{ vm_configs }}"

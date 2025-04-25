@@ -1,0 +1,72 @@
+---
+- name: Cleanup Azure Infrastructure
+  hosts: localhost
+
+  vars_files:
+    - ../group_vars/all.yml
+
+  tasks:
+    # Verwijder VMs eerst (afhankelijk van NICs en disks)
+    - name: Delete virtual machines
+      azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: "{{ item.name }}"
+        state: absent
+      loop: "{{ vm_configs }}"
+      ignore_errors: yes  # For the case where a VM is already deleted
+
+    # Verwijder NICs (afhankelijk van NSGs en public IPs)
+    - name: Delete network interfaces
+      azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: "{{ item.name }}-nic"
+        state: absent
+      loop: "{{ vm_configs }}"
+      ignore_errors: yes
+
+# Verwijder public IP-adressen die gekoppeld zijn aan VMs met een public IP
+    - name: Delete public IP addresses
+      azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        name: "{{ item }}-pip"
+        state: absent
+      loop:
+        - "vm-front-end"
+        - "vm-stepping-stone"  # Alleen VMs met public IP
+      ignore_errors: yes
+
+    # Verwijder subnets (moet voor VNet verwijdering)
+    - name: Delete subnets
+      azure_rm_subnet:
+        resource_group: "{{ resource_group }}"
+        virtual_network: "{{ virtual_network }}"
+        name: "{{ item.subnet }}"
+        state: absent
+      loop: "{{ vm_configs }}"
+      ignore_errors: yes
+
+    # Verwijder NSGs
+    - name: Delete network security groups
+      azure_rm_securitygroup:
+        resource_group: "{{ resource_group }}"
+        name: "{{ item.nsg }}"
+        state: absent
+      loop: "{{ vm_configs }}"
+      ignore_errors: yes
+
+    # Verwijder virtual network
+    - name: Delete virtual network
+      azure_rm_virtualnetwork:
+        resource_group: "{{ resource_group }}"
+        name: "{{ virtual_network }}"
+        state: absent
+      ignore_errors: yes
+
+    # Verwijder eventuele overgebleven disks
+    - name: Delete OS disks
+      azure_rm_manageddisk:
+        resource_group: "{{ resource_group }}"
+        name: "{{ item.name }}-osdisk"
+        state: absent
+      loop: "{{ vm_configs }}"
+      ignore_errors: yes
